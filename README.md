@@ -14,12 +14,12 @@ The model was trained on 2.23 million recipes from the [RecipeNLG](https://recip
 
 ## 🏆 Results
 
-| Metric | Course Baseline (A100, 20K iters) | TinyChef (T4 x2, 30K iters) |
-|---|---|---|
-| Final Train Loss | 2.3919 | **2.0335** |
-| Best Validation Loss | 2.3918 | **2.0148** |
-| Train/Val Gap | ~0.0001 | <0.019 |
-| Parameters | ~15M | **30M** |
+| Metric | TinyChef (T4 x2, 30K iters) |
+|---|---|
+| Final Train Loss |**2.0335** |
+| Best Validation Loss |**2.0148** |
+| Train/Val Gap | <0.019 |
+| Parameters | **30M** |
 
 The train/validation gap never exceeded **0.02** across all 30,000 iterations — confirming the model generalised well and did not overfit.
 
