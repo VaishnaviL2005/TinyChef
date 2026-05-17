@@ -8,7 +8,7 @@
 
 TinyChef is a domain-constrained Small Language Model (SLM) built entirely from scratch using PyTorch. Inspired by the [TinyStories](https://arxiv.org/abs/2305.07759) research paper, the core idea is simple: instead of training a massive model on all of the internet, restrict the domain to a single highly structured task — recipe generation — and train a much smaller model that learns language structure within that domain.
 
-The model was trained on 2.23 million recipes from the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) corpus and achieved a final validation loss of **2.0148** — outperforming the course baseline of 2.3919 achieved on an A100 GPU at 20,000 iterations.
+The model was trained on 2.23 million recipes from the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) corpus and achieved a final validation loss of **2.0148** 
 
 ---
 
@@ -212,19 +212,6 @@ context = torch.tensor(enc.encode_ordinary(prompt)).unsqueeze(0)
 output = model.generate(context, max_new_tokens=200, temperature=0.8, top_k=50)
 print(enc.decode(output.squeeze().tolist()))
 ```
-
----
-
-## 📁 Repository Structure
-
-```
-TinyChef/
-├── SLM_Recipe_Generator.ipynb   # Full training notebook (Kaggle-ready)
-├── best_model_params.pt         # Trained model weights
-├── README.md                    # This file
-└── LICENSE                      # MIT License
-```
-
 ---
 
 ## 📚 References
