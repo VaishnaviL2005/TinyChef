@@ -1,60 +1,62 @@
 # 🍳 TinyChef — Small Language Model for Recipe Generation
 
-> A GPT-style transformer trained from scratch on 2.2 million recipes, proving that a 30M parameter model can learn coherent recipe structure without internet-scale data.
+> A Small Language Model trained from scratch on 2.23 million recipes, demonstrating that a 30M-parameter decoder only Transformer can effectively learn recipe-specific language patterns without internet-scale data.
 
 ---
 
 ## 📋 Project Overview
 
-TinyChef is a domain-constrained Small Language Model (SLM) built entirely from scratch using PyTorch. Inspired by the [TinyStories](https://arxiv.org/abs/2305.07759) research paper, the core idea is simple: instead of training a massive model on all of the internet, restrict the domain to a single highly structured task — recipe generation — and train a much smaller model that learns language structure within that domain.
+TinyChef is a domain-constrained Small Language Model (SLM) built entirely from scratch using PyTorch. The core idea is simple: instead of training a massive model on all of the internet, restrict the domain to a single highly structured task — recipe generation — and train a much smaller model that learns language structure within that domain.
 
-The model was trained on 2.23 million recipes from the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) corpus and achieved a final validation loss of **2.0148** 
+The model was trained on 2.23 million recipes from the [RecipeNLG](https://recipenlg.cs.put.poznan.pl/) corpus and achieved a **Test Loss of 2.68**, **Perplexity of 14.54**, and an **average BLEU score of 0.275**, demonstrating its ability to generate coherent and well-structured recipes.
 
 ---
 
 ## 🏆 Results
 
-| Metric | TinyChef (T4 x2, 30K iters) |
-|---|---|
-| Final Train Loss |**2.0335** |
-| Best Validation Loss |**2.0148** |
-| Train/Val Gap | <0.019 |
-| Parameters | **30M** |
+| Metric | Value |
+|---|---:|
+| Test Loss | **2.6767** |
+| Perplexity | **14.54** |
+| Average BLEU Score | **0.275** |
+| Total Parameters | **30,044,544 (~30M)** |
 
-The train/validation gap never exceeded **0.02** across all 30,000 iterations — confirming the model generalised well and did not overfit.
+The model was trained for **25,000 iterations** using mixed-precision training, 32-step gradient accumulation, AdamW optimization, and cosine learning-rate decay. Throughout training, the training and validation losses remained closely aligned, indicating stable convergence with minimal overfitting.
 
 ---
 
 ## 🧠 Model Architecture
 
-A decoder-only GPT-style transformer with the following configuration:
+TinyChef is a **decoder-only Transformer** designed for autoregressive next-token prediction. The model learns to generate recipes by predicting one token at a time while attending only to previously generated tokens through causal masking.
 
 | Parameter | Value |
-|---|---|
+|---|---:|
 | Transformer Layers | 6 |
 | Attention Heads | 6 |
 | Embedding Dimension | 384 |
-| Context Window | 128 tokens |
+| Context Window | 256 tokens |
 | Vocabulary Size | 50,257 (GPT-2 BPE) |
 | Dropout | 0.1 |
-| **Total Parameters** | **~30M** |
+| Total Trainable Parameters | **~30M** |
 
 Key architectural components:
 - Causal masked multi-head self-attention
 - Feed-forward layers with GELU activation
 - Residual skip connections + Layer Normalization
-- Weight-tied token embeddings and output head
 
 ---
 
 ## 📦 Dataset
 
-**RecipeNLG** — 2.23 million cooking recipes (ACL INLG 2020)
+**RecipeNLG** — A corpus of **2.23 million cooking recipes** introduced in ACL INLG 2020.
 
 | Split | Recipes |
-|---|---|
-| Train | 2,210,142 |
-| Validation | 21,000 |
+|---|---:|
+| Train | **2,205,142** |
+| Validation | **21,000** |
+| Test | **5,000** |
+
+The dataset consists of semi-structured recipe records containing recipe titles, ingredients, and cooking instructions. Each recipe was converted into a flat autoregressive text format and terminated with a custom `<|endofrecipe|>` token to enable sequential language modeling.
 
 ### Getting the Dataset
 
@@ -81,113 +83,109 @@ Instructions:
 ## ⚙️ Training Pipeline
 
 ### 1. Tokenization
-- GPT-2 BPE tokenizer via `tiktoken`
-- Token IDs stored as memory-mapped `.bin` files using `numpy.memmap` to avoid RAM overload with 2.2M recipes
+- GPT-2 Byte Pair Encoding (BPE) tokenizer using `tiktoken`
+- Each recipe converted into an autoregressive text sequence ending with `<|endofrecipe|>`
+- Token IDs stored as memory-mapped binary (`.bin`) files using `numpy.memmap` for efficient disk-based loading
+- Token IDs saved as `uint16` to reduce storage while supporting the GPT-2 vocabulary of 50,257 tokens
+- Random mini-batches sampled directly from the binary files during training without loading the complete dataset into memory
 
 ### 2. Training Configuration
 
 | Hyperparameter | Value |
-|---|---|
-| Max Iterations | 30,000 |
-| Batch Size | 32 |
-| Block Size (Context) | 128 |
-| Gradient Accumulation Steps | 32 |
-| Learning Rate | 1e-4 |
-| Min LR (cosine decay) | 5e-4 |
-| Warmup Steps | 1,000 |
-| Precision | float16 (mixed) |
-| Optimizer | AdamW (β1=0.9, β2=0.95, wd=0.1) |
-| Gradient Clipping | max_norm=0.5 |
+|---|---:|
+| Max Iterations | **25,000** |
+| Mini Batch Size | **32** |
+| Effective Batch Size | **1,024 (32 × 32)** |
+| Context Window | **256 tokens** |
+| Gradient Accumulation Steps | **32** |
+| Initial Learning Rate | **1e-4** |
+| Minimum Learning Rate | **1e-5** |
+| Warmup Steps | **1,000** |
+| Mixed Precision | **bfloat16 (if supported), otherwise float16** |
+| Optimizer | **AdamW (β₁=0.9, β₂=0.95, weight decay=0.1)** |
+| Gradient Clipping | **max_norm = 0.5** |
+| Random Seed | **42** |
 
 ### 3. Optimisation Tricks
-- **Mixed Precision (float16)**: Faster matrix ops on T4 GPU
-- **Gradient Accumulation**: Effective batch size of 32×32=1024 without OOM
-- **Cosine LR Decay** with linear warmup
-- **Gradient Clipping** for stable late-stage training
+- **Memory-mapped datasets:** Streamed tokenized recipes directly from disk using `numpy.memmap`, enabling training on over 2.2 million recipes without exhausting RAM.
+- **Mixed Precision Training:** Used automatic mixed precision (`bfloat16`/`float16`) to reduce GPU memory usage and accelerate computation.
+- **Gradient Accumulation (32 steps):** Simulated an effective batch size of 1,024 sequences while fitting within GPU memory constraints.
+- **Linear Warmup + Cosine Learning Rate Decay:** Gradually increased the learning rate during the initial training phase before smoothly decaying it for stable convergence.
+- **Gradient Clipping:** Limited gradient norms to improve numerical stability and prevent exploding gradients during optimization.
+
 
 ### 4. Infrastructure
-- Trained on Kaggle (T4 x2 GPU) — ~6 hours total
-- Periodic checkpoint saving every 2,000 iterations
-- Loss lists saved to `.npy` files for plot recovery across sessions
+- Trained on **Kaggle** using **NVIDIA Tesla T4 ×2 GPUs**
+- Best-performing model automatically saved based on validation loss
+- Model checkpoints saved every **5,000 iterations**
+- Training and validation loss histories periodically saved as `.npy` files for recovery and visualization
 
 ---
 
-## 📈 Loss Curve
+## 📈 Training Progress
 
-| Iteration | Train Loss | Val Loss |
-|---|---|---|
-| 2,000 | 4.91 | 4.89 |
-| 6,000 | 3.37 | 3.37 |
-| 10,000 | 2.79 | 2.77 |
-| 14,000 | 2.49 | 2.47 |
-| 18,000 | 2.29 | 2.28 |
-| 22,000 | 2.17 | 2.16 |
-| 26,000 | 2.09 | 2.08 |
-| 29,500 | 2.03 | **2.01** |
+The model was trained for **25,000 iterations** using a 256-token context window. Training and validation losses decreased steadily throughout training, indicating stable convergence with minimal overfitting.
 
-Both curves converge smoothly with no divergence — a sign of healthy training throughout.
+| Iteration | Train Loss | Validation Loss |
+|---:|---:|---:|
+| 5,000 | 4.1878 | 4.2013 |
+| 10,000 | 3.2166 | 3.2274 |
+| 15,000 | 2.8787 | 2.8847 |
+| 20,000 | 2.7320 | 2.7536 |
+| 24,000 | 2.6844 | 2.6917 |
+| 24,500 | 2.6882 | **2.6917** |
+
+The close alignment between the training and validation losses throughout training indicates stable optimization and good generalization on unseen recipes.
 
 ---
 
-## 🔥 Inference Examples
+## 🔥 Inference Example
 
-### Prompt 1: Chocolate Chip Cookies
-```
+### Prompt
+```text
 Recipe: Chocolate Chip Cookies
-Ingredients: 2 1/2 c. flour, 3/4 c. sugar, 1 tsp. baking powder, 1 tsp. salt,
-1 1/2 c. cold unsalted butter, 1 c. sugar, 3 eggs, 1 c. buttermilk,
-1 c. semi-sweet chocolate chips
-Instructions:
-1. Mix flour, sugar and salt.
-2. Add egg, margarine and vanilla.
-3. Stir in beaten eggs and chocolate chips.
-4. Drop onto ungreased cookie sheet.
-5. Bake at 325 degrees for 10 minutes or until lightly browned.
-6. Remove from oven and let cool.
-7. Cut into small pieces.
-<|endofrecipe|>
+Ingredients:
 ```
-✅ Correct structure, realistic temperature and bake time, logical step ordering.
 
-### Prompt 2: Chicken Soup
-```
-Recipe: Chicken Soup
-Ingredients: 1/2 medium onion (chopped), 1 medium zucchini (grated),
-diced green chilies, 1 lb. ground beef, 2 cans cream-style corn,
-1 can cream of mushroom soup, 2 small cans chicken broth
+### Generated Output
+```text
+Recipe: Chocolate Chip Cookies
+Ingredients:
+2 c. shortening, 1 c. pecans, 1 c. sugar, 1 tsp. soda,
+3 tsp. cinnamon, 2 c. baking powder, 2 c. flour,
+1/4 c. chopped nuts, 2 eggs, 2 tsp. cinnamon,
+1 tsp. baking soda, 2 tsp. salt, 3 c. vanilla extract,
+1 c. peanut butter, 1 c. grated margarine,
+3 c. brown sugar
+
 Instructions:
-1. Combine water, bouillon cubes and tomato sauce.
-2. Beat until smooth; add remaining ingredients.
-3. Make meatballs.
-4. Add enough broth to moisten with butter or margarine.
-5. Cook 10 minutes.
-6. Add to skillet; stir.
+1. Mix mixture, eggs, sugar, vanilla, and vanilla.
+2. Beat in a 9 × 13-inch dish.
+3. Bake at 350°F for 30–40 minutes.
+4. Pour cream cheese batter into a greased pan.
+5. Sprinkle remaining sugar over the cake.
+6. Bake at 350°F for another 30 minutes.
 <|endofrecipe|>
 ```
-✅ Correct template structure and grammatically fluent steps.
-⚠️ Ingredient hallucination present (zucchini, ground beef in chicken soup) — expected at this loss level.
+
+**Observations**
+- ✅ Correct `Recipe → Ingredients → Instructions → <|endofrecipe|>` structure.
+- ✅ Fluent procedural language with realistic cooking terminology.
+- ✅ Generates plausible ingredient quantities, temperatures, and cooking steps.
+- ⚠️ Occasionally hallucinates ingredients or repeats certain items (e.g., cinnamon, vanilla), reflecting the limitations of a compact domain-specific language model.
 
 ---
 
 ## ✅ Strengths & ⚠️ Limitations
 
-**Strengths**
-- Consistent `Recipe → Ingredients → Instructions → <|endofrecipe|>` format every generation
-- Grammatically fluent, well-formed instruction steps
-- Realistic cooking quantities, temperatures, and procedural language
-- Stable sequence termination
+### Strengths
+- Consistently generates the expected `Recipe → Ingredients → Instructions → <|endofrecipe|>` format.
+- Produces grammatically fluent and coherent cooking instructions.
 
-**Limitations**
-- Occasional ingredient hallucination (off-topic ingredients selected)
-- Imperfect consistency between ingredient list and later instructions
-- Weak long-range semantic dependency in longer generations (128 token context limit)
-
----
-
-## 🚀 Future Improvements
-
-- **Longer context window** (512–1024 tokens) to retain ingredients through full generation
-- **Cuisine conditioning** tags (`Cuisine: Indian`) to reduce hallucination
+### Limitations
+- Occasional ingredient hallucination or repetition.
+- Ingredient lists and cooking instructions are not always perfectly consistent.
+- Long-range dependencies can still weaken in longer generations despite the 256-token context window.
 
 ---
 
